@@ -23,7 +23,6 @@ async def main():
     # Выводим в консоль информацию о начале запуска бота
     logger.info('Starting bot')
 
-
     # Инициализация хранилища (создание экземпляра класса MemoryStorage)
     storage: MemoryStorage = MemoryStorage()
 
