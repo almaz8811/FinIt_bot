@@ -1,8 +1,9 @@
 from aiogram.filters import BaseFilter
-from aiogram.types import CallbackQuery
+from aiogram.types import Message
+from lexicon.lexicon import bank_list
 
 
 class IsBankHandler(BaseFilter):
-    async def __call__(self, callback: CallbackQuery) -> bool:
-        print(callback.data)
-        return callback.data.startswith('bank')
+    async def __call__(self, message: Message) -> bool:
+        print(message.text in bank_list.values())
+        return message.text in bank_list.values()

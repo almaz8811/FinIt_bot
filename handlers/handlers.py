@@ -11,8 +11,10 @@ from filters.filters import IsBankHandler
 # Инициализация роутера уровня роутера
 router: Router = Router()
 
+keyboard_start = create_kb(1, start_button=True)
 keyboard_bank = create_kb(1, cancel_button='Отмена', **bank_list)
 keyboard_cancel = create_kb(1, cancel_button='Отмена')
+
 
 # Создание класса, наследуемого от StatesGroup, для группы состояний FSM
 class FSMFillForm(StatesGroup):
@@ -23,45 +25,48 @@ class FSMFillForm(StatesGroup):
     balance_bank = State()  # Состояние ожидания ввода остатков по банку
 
 
-# Этот хэндлер будет срабатывать на команду /start и отправлять в чат клавиатуру с кнопками
-@router.message(CommandStart())
+# Этот хэндлер будет срабатывать на команду /start вне состояний
+# и предлагать выбрать филиал
+@router.message(CommandStart(), StateFilter(default_state))
 async def process_start_command(message: Message):
     # Передать весь словарь bank_list с кнопками
-    await message.answer(text='Выберите организацию', reply_markup=keyboard_bank)
+    await message.answer(text='Внести остатки', reply_markup=keyboard_start)
 
 
 # Этот хэндлер будет срабатывать на команду /cancel в любых состояниях
 # кроме состояния по-умолчанию, и отключать машину состояний
-@router.callback_query(F.data == 'cancel', ~StateFilter(default_state))
-async def process_cancel_command_state(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer(text='Вы отменили ввод данных\n\n'
-                                       'Чтобы снова перейти к заполнению - выберите филиал')
-    await callback.message.delete()
+@router.message(F.text == 'Отмена', ~StateFilter(default_state))
+async def process_cancel_command_state(message: Message, state: FSMContext):
+    await message.answer(text='Вы отменили ввод данных.\n\n'
+                              'Чтобы снова перейти к заполнению - выберите филиал.',
+                         reply_markup=keyboard_bank)
+    # Сброс состояния
+    await state.clear()
 
 
-# # Этот хэндлер будет срабатывать на команду /cancel в состоянии по-умолчанию
-# # и сообщать, что эта команда доступна в машине состояний
-# @router.callback_query(F.data == 'cancel', StateFilter)
-# async def process_cancel_command(callback: CallbackQuery):
+# Этот хэндлер будет срабатывать на команду /cancel в состоянии по-умолчанию
+# и сообщать, что эта команда доступна в машине состояний
+@router.message(F.text == 'Отмена', StateFilter(default_state))
+async def process_cancel_command_state(message: Message, ):
+    await message.answer(text='Отменять нечего. Вы не вводили данных.\n\n'
+                              'Чтобы перейти к заполнению - выберите филиал.',
+                         reply_markup=keyboard_bank)
 
 
-@router.callback_query(F.data == 'bank_12')
-async def bank_command(callback: CallbackQuery):
-    await callback.message.answer(text='Вы отменили ввод данных\n'
-                                       'Чтобы снова перейти к заполнению - выберите филиал',
-                                  reply_markup=keyboard_cancel)
-    await callback.message.delete()
+@router.message(F.text == 'test')
+async def bank_command(message: Message):
+    await message.answer(text='Вы отменили ввод данных\n\n'
+                              'Чтобы снова перейти к заполнению - выберите филиал',
+                         reply_markup=keyboard_cancel)
 
 
-@router.callback_query(F.data == 'cancel')
-async def bank_command(callback: CallbackQuery):
-    await callback.message.answer(text='Вы отменили ввод данных\n'
-                                       'Чтобы снова перейти к заполнению - выберите филиал',
-                                  reply_markup=keyboard_bank)
-    await callback.message.delete()
+@router.message(F.text == 'Отмена')
+async def bank_command(message: Message):
+    await message.answer(text='Вы отменили ввод данных\n'
+                              'Чтобы снова перейти к заполнению - выберите филиал',
+                         reply_markup=keyboard_bank)
 
 
-@router.callback_query(IsBankHandler())
-async def bank_command(callback: CallbackQuery):
-    await callback.message.answer(text=f'filter + {callback.data}', reply_markup=keyboard_bank)
-    await callback.message.delete()
+@router.message(IsBankHandler())
+async def bank_command(message: Message):
+    await message.answer(text=f'Выбран филиал {message.text}', reply_markup=keyboard_bank)
