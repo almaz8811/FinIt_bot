@@ -4,9 +4,10 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters.state import State, StatesGroup
 from aiogram.fsm.state import default_state
 from aiogram.fsm.context import FSMContext
+from aiogram.enums import ParseMode
 from keyboards.keyboard import create_kb
 from lexicon.lexicon import bank_list
-from filters.filters import IsBankHandler
+from filters.filters import IsBankHandler, IsDigitalFloat
 
 # Инициализация роутера уровня роутера
 router: Router = Router()
@@ -23,6 +24,7 @@ class FSMFillForm(StatesGroup):
     bank_name = State()  # Состояние ожидания выбора филиала
     balance_cash = State()  # Состояние ожидания ввода остатков по кассе
     balance_bank = State()  # Состояние ожидания ввода остатков по банку
+    accept = State()  # Состояние ожидания нажатия на кнопку отправки
 
 
 # Этот хэндлер будет срабатывать на команду /start вне состояний
@@ -65,9 +67,9 @@ async def process_select_bank(message: Message, state: FSMContext):
 # Этот хэндлер будет срабатывать, если выбран корректный филиал
 # и переводить в состояние ожидании ввода остатков по кассе
 @router.message(StateFilter(FSMFillForm.bank_name), IsBankHandler())
-async def process_bank_sent(message: Message, state: FSMContext):
-    # Сохраняем выбранный банк в хранилище по ключу "bank"
-    await state.update_data(bank=message.text)
+async def process_bank_name_sent(message: Message, state: FSMContext):
+    # Сохраняем выбранный банк в хранилище по ключу "bank_name"
+    await state.update_data(bank_name=message.text)
     await message.answer(text=f'Введите остатки по кассе для филиала {message.text}', reply_markup=keyboard_cancel)
     # Устанавливаем состояние ожидания ввода остатков по кассе
     await state.set_state(FSMFillForm.balance_cash)
@@ -75,18 +77,19 @@ async def process_bank_sent(message: Message, state: FSMContext):
 
 # Это хэндлер будет срабатывать, если во время выбора филиала будет введено что-то некорректное
 @router.message(StateFilter(FSMFillForm.bank_name))
-async def warning_not_bank(message: Message):
+async def warning_not_bank_name(message: Message):
     await message.answer(text=f'Филиал {message.text} не найден. Попробуйте выбрать другой филиал.',
                          reply_markup=keyboard_cancel)
 
 
 # Этот хэндлер будет срабатывать, если введены корректные остатки по кассе
 # и переводить в состояние ожидания ввода остатков по банку
-@router.message(StateFilter(FSMFillForm.balance_cash), F.text.isdigit())
-async def process_cash_sent(message: Message, state: FSMContext):
+@router.message(StateFilter(FSMFillForm.balance_cash), IsDigitalFloat())
+async def process_balance_cash_sent(message: Message, state: FSMContext):
     # Считываем название филиала из хранилища машины состояний
     data = await state.get_data()
-    # Сохраняем остатки по кассе в хранилище по ключу "cash"
+    # Сохраняем остатки по кассе в хранилище по ключу "balance_cash"
+    await state.update_data(balance_cash=message.text)
     await message.answer(text=f'Введите остатки по банку для филиала {data.get('bank')}',
                          reply_markup=keyboard_cancel)
     # Устанавливаем состояние ожидания ввода остатков по банку
@@ -95,9 +98,28 @@ async def process_cash_sent(message: Message, state: FSMContext):
 
 # Это хэндлер будет срабатывать, если во время ввода остатков по кассе будет введено что-то некорректное
 @router.message(StateFilter(FSMFillForm.balance_cash))
-async def warning_not_cash(message: Message):
-    await message.answer(text=f'Неверные данные: {message.text}. Введите сумму остатков по кассе.',
-                         reply_markup=keyboard_cancel)
+async def warning_not_balance_cash(message: Message):
+    await message.answer(text=f'Неверные данные: <b>{message.text}</b>. Введите сумму остатков по кассе.',
+                         parse_mode=ParseMode.HTML, reply_markup=keyboard_cancel)
+
+
+# Этот хэндлер будет срабатывать, если введены корректные остатки по банку
+# и переводить в состояние ожидания нажатия кнопки отправки
+@router.message(StateFilter(FSMFillForm.balance_bank), IsDigitalFloat())
+async def process_balance_bank_sent(message: Message, state: FSMContext):
+    # Сохраняем остатки по банку в хранилище по ключу "balance_bank"
+    await state.update_data(balance_bank=message.text)
+    # TODO: Подставить клавиатуру с кнопками 'Отправить' и 'Отмена'
+    await message.answer(text='Нажмите кнопку для отправки данных.', reply_markup=keyboard_cancel)
+    # Устанавливаем состояние ожидания нажатия кнопки отправки
+    await state.set_state(FSMFillForm.accept)
+
+
+# Этот хэндлер будет срабатывать, если во время ввода остатков по банку будет введено что-то некорректное
+@router.message(StateFilter(FSMFillForm.balance_bank))
+async def warning_not_balance_bank(message: Message):
+    await message.answer(text=f'Неверные данные: <b>{message.text}</b>. Введите сумму остатков по банку.',
+                         parse_mode=ParseMode.HTML, reply_markup=keyboard_cancel)
 
 
 @router.message(F.text == 'Выбрать филиал', StateFilter(default_state))

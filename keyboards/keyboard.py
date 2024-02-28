@@ -2,7 +2,8 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 
-def create_kb(width: int, start_button: True | False = None, cancel_button: str | None = None, **kwargs: str) -> ReplyKeyboardMarkup:
+def create_kb(width: int, start_button: True | False = None,
+              cancel_button: str | None = None, **kwargs: str) -> ReplyKeyboardMarkup:
     # Инициализация билдера
     kb_builder: ReplyKeyboardBuilder = ReplyKeyboardBuilder()
     # Инициализация списка для кнопок
