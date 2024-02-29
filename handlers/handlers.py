@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters.state import State, StatesGroup
 from aiogram.fsm.state import default_state
@@ -25,6 +25,10 @@ class FSMFillForm(StatesGroup):
     balance_cash = State()  # Состояние ожидания ввода остатков по кассе
     balance_bank = State()  # Состояние ожидания ввода остатков по банку
     accept = State()  # Состояние ожидания нажатия на кнопку отправки
+
+
+# Создаем базу данных:
+user_dict: dict[int, dict[str, str | int | bool]] = {}
 
 
 # Этот хэндлер будет срабатывать на команду /start вне состояний
@@ -90,7 +94,7 @@ async def process_balance_cash_sent(message: Message, state: FSMContext):
     data = await state.get_data()
     # Сохраняем остатки по кассе в хранилище по ключу "balance_cash"
     await state.update_data(balance_cash=message.text)
-    await message.answer(text=f'Введите остатки по банку для филиала {data.get('bank')}',
+    await message.answer(text=f'Введите остатки по банку для филиала {data.get('bank_name')}',
                          reply_markup=keyboard_cancel)
     # Устанавливаем состояние ожидания ввода остатков по банку
     await state.set_state(FSMFillForm.balance_bank)
@@ -120,6 +124,38 @@ async def process_balance_bank_sent(message: Message, state: FSMContext):
 async def warning_not_balance_bank(message: Message):
     await message.answer(text=f'Неверные данные: <b>{message.text}</b>. Введите сумму остатков по банку.',
                          parse_mode=ParseMode.HTML, reply_markup=keyboard_cancel)
+
+
+# Этот хэндлер будет срабатывать на выбор кнопки подтверждения отправки данных
+# и выходить из машины состояний
+@router.message(F.text == 'Отправить', StateFilter(FSMFillForm.accept))
+async def process_accept_sent(message: Message, state: FSMContext):
+    # Добавляем в базу отправленные данные по ключу id пользователя
+    user_dict[message.from_user.id] = await state.get_data()
+    # Завершаем машину состояний
+    await state.clear()
+    # Отправляем в чат сообщение о выходе из машины состояний
+    await message.answer(text='Спасибо! Ваши данные сохранены!\n\n'
+                              'Вы вышли из машины состояний')
+    # Отправляем в чат сообщение с предложением посмотреть свою анкету
+    await message.answer(text='Чтобы посмотреть введенные данные отправьте команду /showdata')
+
+
+# Этот хэндлер будет срабатывать на отправку команды /showdata
+# и отправлять в чат заполненные данные, либо сообщение об отсутствии данных
+@router.message(Command(commands='showdata'), StateFilter(default_state))
+async def process_showdata(message: Message):
+    # Отправляем пользователю анкету, если она есть в базе данных
+    if message.from_user.id in user_dict:
+        await message.answer(text=f'Филиал: {user_dict[message.from_user.id]['bank_name']}\n'
+                                  f'Остатки по кассе: {user_dict[message.from_user.id]['balance_cash']}\n'
+                                  f'Остатки по банку: {user_dict[message.from_user.id]['balance_bank']}',
+                             reply_markup=keyboard_start)
+    else:
+        # Если данных в базе нет - предлагаем заполнить
+        await message.answer(text='Вы еще не вносили данные. Чтобы заполнить - выберите филиал',
+                             reply_markup=keyboard_start)
+    print(user_dict[message.from_user.id])
 
 
 @router.message(F.text == 'Выбрать филиал', StateFilter(default_state))
